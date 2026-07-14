@@ -1,0 +1,11 @@
+---
+// "Blog-Beiträge" dashboard widget shell. Renders the card chrome + a hydrated
+// island that fetches /blog/summary. Rendered by the Dashboard host via
+// virtual:panel-widgets.
+import PostsCount from "../islands/WidgetBody.tsx";
+---
+
+<article class="widget widget--blog-cms">
+  <h3>Blog-Beiträge</h3>
+  <PostsCount client:load />
+</article>

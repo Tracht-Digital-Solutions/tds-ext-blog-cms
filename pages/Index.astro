@@ -1,0 +1,11 @@
+---
+// Blog-CMS page, injected into the host build via the manifest's route slot.
+// Checkpoint-1: the managed-blogs list + add-blog form. The post editor
+// (markdown editor + publish/draft + rebuild trigger) lands in the next checkpoint.
+import BlogsList from "../islands/BlogsList.tsx";
+---
+
+<section class="page page--blog-cms">
+  <h1>Blog-CMS</h1>
+  <BlogsList client:load />
+</section>
