@@ -22,7 +22,7 @@ final class BlogRepository
     public function blogs(): array
     {
         return $this->pdo->query(
-            'SELECT id, blog_key, name, updated_at FROM blog ORDER BY name, id'
+            'SELECT id, blog_key, name, rebuild_repo, rebuild_workflow, updated_at FROM blog ORDER BY name, id'
         )->fetchAll();
     }
 
@@ -34,10 +34,20 @@ final class BlogRepository
     /** @return array<string,mixed>|null */
     public function findBlog(string $blogKey): ?array
     {
-        $stmt = $this->pdo->prepare('SELECT id, blog_key, name FROM blog WHERE blog_key = :k LIMIT 1');
+        $stmt = $this->pdo->prepare(
+            'SELECT id, blog_key, name, rebuild_repo, rebuild_workflow FROM blog WHERE blog_key = :k LIMIT 1'
+        );
         $stmt->execute([':k' => $blogKey]);
         $row = $stmt->fetch();
         return $row === false ? null : $row;
+    }
+
+    public function updateBlogRebuild(int $blogId, ?string $repo, ?string $workflow): void
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE blog SET rebuild_repo = :r, rebuild_workflow = :w WHERE id = :id'
+        );
+        $stmt->execute([':r' => $repo, ':w' => $workflow, ':id' => $blogId]);
     }
 
     public function blogKeyExists(string $blogKey): bool

@@ -86,6 +86,14 @@ final class BlogCmsModuleTest extends TestCase
         );
     }
 
+    /** @param array<string,mixed> $body */
+    private function put(\Slim\App $app, string $path, array $body): \Psr\Http\Message\ResponseInterface
+    {
+        return $app->handle(
+            (new ServerRequestFactory())->createServerRequest('PUT', $path)->withParsedBody($body)
+        );
+    }
+
     public function testMetadata(): void
     {
         $module = new BlogCmsModule();
@@ -115,5 +123,17 @@ final class BlogCmsModuleTest extends TestCase
     {
         $res = $this->post($this->appWith(new FakeUser(perms: ['blog:write'])), '/blogs', ['blog_key' => 'Bad Key', 'name' => 'X']);
         self::assertSame(422, $res->getStatusCode());
+    }
+
+    public function testRebuildConfigRequiresWrite(): void
+    {
+        $res = $this->put($this->appWith(new FakeUser(perms: ['blog:read'])), '/blogs/demo/rebuild-config', ['rebuild_repo' => 'a/b']);
+        self::assertSame(403, $res->getStatusCode());
+    }
+
+    public function testManualRebuildRequiresWrite(): void
+    {
+        $res = $this->post($this->appWith(new FakeUser(perms: ['blog:read'])), '/blogs/demo/rebuild', []);
+        self::assertSame(403, $res->getStatusCode());
     }
 }

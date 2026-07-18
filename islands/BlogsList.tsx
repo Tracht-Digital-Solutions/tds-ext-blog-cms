@@ -4,6 +4,8 @@ interface Blog {
   id: number;
   blog_key: string;
   name: string;
+  rebuild_repo?: string | null;
+  rebuild_workflow?: string | null;
 }
 
 interface PostMeta {
@@ -116,6 +118,32 @@ function BlogPosts({ blog, onBack }: { blog: Blog; onBack: () => void }) {
   const [editing, setEditing] = useState<PostDraft | null>(null);
   /** True when the editor targets an existing (blog, slug, lang) — locks slug/lang. */
   const [isExisting, setIsExisting] = useState(false);
+  const [rebuildRepo, setRebuildRepo] = useState(blog.rebuild_repo ?? "");
+  const [rebuildWorkflow, setRebuildWorkflow] = useState(blog.rebuild_workflow ?? "dev.yml");
+  const [rebuildStatus, setRebuildStatus] = useState<string | null>(null);
+
+  const saveRebuildConfig = async () => {
+    const res = await api(`/blogs/${blog.blog_key}/rebuild-config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rebuild_repo: rebuildRepo.trim(), rebuild_workflow: rebuildWorkflow.trim() }),
+    });
+    setRebuildStatus(res.ok ? "Rebuild-Konfiguration gespeichert." : `Fehler (HTTP ${res.status}).`);
+  };
+
+  const rebuildNow = async () => {
+    setRebuildStatus("Rebuild wird ausgelöst …");
+    const res = await api(`/blogs/${blog.blog_key}/rebuild`, { method: "POST" });
+    if (res.ok) {
+      setRebuildStatus("Rebuild ausgelöst.");
+    } else if (res.status === 503) {
+      setRebuildStatus("Kein Rebuild-Token konfiguriert (BLOG_REBUILD_TOKEN).");
+    } else if (res.status === 422) {
+      setRebuildStatus("Für diesen Blog ist kein Repository hinterlegt.");
+    } else {
+      setRebuildStatus(`Fehler (HTTP ${res.status}).`);
+    }
+  };
 
   const loadPosts = () =>
     api(`/blogs/${blog.blog_key}/posts`)
@@ -189,6 +217,31 @@ function BlogPosts({ blog, onBack }: { blog: Blog; onBack: () => void }) {
           ))}
         </ul>
       )}
+
+      <div className="blog-rebuild">
+        <h3>Rebuild-Konfiguration</h3>
+        <p className="blog-rebuild__hint">
+          Repository (<code>owner/name</code>) und Workflow-Datei, die ein veröffentlichter
+          Beitrag neu baut. Der Token wird serverseitig über <code>BLOG_REBUILD_TOKEN</code> bereitgestellt.
+        </p>
+        <div className="flex gap-2">
+          <input
+            value={rebuildRepo}
+            onChange={(e) => setRebuildRepo(e.target.value)}
+            placeholder="Tracht-Digital-Solutions/tds-blog"
+          />
+          <input
+            value={rebuildWorkflow}
+            onChange={(e) => setRebuildWorkflow(e.target.value)}
+            placeholder="dev.yml"
+          />
+        </div>
+        {rebuildStatus ? <p className="status-pill status-pill--info">{rebuildStatus}</p> : null}
+        <div className="flex gap-2">
+          <button type="button" onClick={saveRebuildConfig}>Konfiguration speichern</button>
+          <button type="button" onClick={rebuildNow}>Jetzt neu bauen</button>
+        </div>
+      </div>
     </div>
   );
 }

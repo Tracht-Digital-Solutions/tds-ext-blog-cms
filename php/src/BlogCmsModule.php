@@ -8,6 +8,7 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\App;
 use Tds\Ext\BlogCms\Domain\BlogRepository;
+use Tds\Ext\BlogCms\Service\RebuildTrigger;
 use Tds\Panel\Contract\AbstractModule;
 use Tds\Panel\Contract\PermissionDef;
 use Tds\Panel\Contract\UserContext;
@@ -47,6 +48,9 @@ final class BlogCmsModule extends AbstractModule
         $c = $app->getContainer();
         if ($c !== null && !$c->has(BlogRepository::class)) {
             $c->set(BlogRepository::class, static fn ($c) => new BlogRepository($c->get(PDO::class)));
+        }
+        if ($c !== null && !$c->has(RebuildTrigger::class)) {
+            $c->set(RebuildTrigger::class, static fn () => RebuildTrigger::fromEnv());
         }
 
         $app->get('/blog/summary', function (Request $req, Response $res) use ($c): Response {
@@ -134,7 +138,52 @@ final class BlogCmsModule extends AbstractModule
                 // Publishing sets published_at when it's a non-draft with none yet.
                 'published_at' => $draft ? null : ($body['published_at'] ?? date('Y-m-d H:i:s')),
             ]);
+            // A published (non-draft) save re-bakes the static blog; drafts don't.
+            if (!$draft) {
+                self::fireRebuild($c->get(RebuildTrigger::class), $blog, 'post ' . (string) $args['slug'] . ' saved');
+            }
             return self::json($res, ['ok' => true]);
+        });
+
+        // Set a blog's rebuild target (repo/workflow); blank clears it.
+        $app->put('/blogs/{blog:[a-z0-9-]+}/rebuild-config', function (Request $req, Response $res, array $args) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'blog:write', $res)) !== null) {
+                return $deny;
+            }
+            $repo = $c->get(BlogRepository::class);
+            $blog = $repo->findBlog((string) $args['blog']);
+            if ($blog === null) {
+                return self::json($res, ['error' => 'Blog not found'], 404);
+            }
+            $body = (array) $req->getParsedBody();
+            $repoName = trim((string) ($body['rebuild_repo'] ?? ''));
+            $workflow = trim((string) ($body['rebuild_workflow'] ?? ''));
+            if ($repoName !== '' && preg_match('#^[\w.-]+/[\w.-]+$#', $repoName) !== 1) {
+                return self::json($res, ['error' => 'rebuild_repo must be "owner/name"'], 422);
+            }
+            $repo->updateBlogRebuild((int) $blog['id'], $repoName !== '' ? $repoName : null, $workflow !== '' ? $workflow : null);
+            return self::json($res, ['ok' => true]);
+        });
+
+        // Manually fire a blog's rebuild ("Jetzt neu bauen").
+        $app->post('/blogs/{blog:[a-z0-9-]+}/rebuild', function (Request $req, Response $res, array $args) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'blog:write', $res)) !== null) {
+                return $deny;
+            }
+            $repo = $c->get(BlogRepository::class);
+            $blog = $repo->findBlog((string) $args['blog']);
+            if ($blog === null) {
+                return self::json($res, ['error' => 'Blog not found'], 404);
+            }
+            $trigger = $c->get(RebuildTrigger::class);
+            if (!$trigger->isConfigured()) {
+                return self::json($res, ['error' => 'Rebuild token not configured'], 503);
+            }
+            if (trim((string) ($blog['rebuild_repo'] ?? '')) === '') {
+                return self::json($res, ['error' => 'No rebuild repo configured for this blog'], 422);
+            }
+            self::fireRebuild($trigger, $blog, 'manual rebuild');
+            return self::json($res, ['ok' => true], 202);
         });
 
         $app->delete('/blogs/{blog:[a-z0-9-]+}/posts/{slug:[a-z0-9-]+}', function (Request $req, Response $res, array $args) use ($c): Response {
@@ -147,11 +196,22 @@ final class BlogCmsModule extends AbstractModule
                 return self::json($res, ['error' => 'Blog not found'], 404);
             }
             $repo->deletePost((int) $blog['id'], (string) $args['slug'], self::lang($req->getQueryParams()['lang'] ?? 'de'));
+            self::fireRebuild($c->get(RebuildTrigger::class), $blog, 'post ' . (string) $args['slug'] . ' deleted');
             return self::json($res, ['ok' => true]);
         });
     }
 
     // --- helpers ---------------------------------------------------------------
+
+    /** @param array<string,mixed> $blog */
+    private static function fireRebuild(RebuildTrigger $trigger, array $blog, string $reason): void
+    {
+        $trigger->trigger(
+            isset($blog['rebuild_repo']) ? (string) $blog['rebuild_repo'] : null,
+            isset($blog['rebuild_workflow']) ? (string) $blog['rebuild_workflow'] : null,
+            $reason,
+        );
+    }
 
     private static function require(UserContext $user, string $permission, Response $res): ?Response
     {

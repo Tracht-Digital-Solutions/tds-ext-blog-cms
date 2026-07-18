@@ -33,8 +33,16 @@ Blog-CMS extension, ported from `tds-content-api`'s blog-post model. Read
   — "Neuer Beitrag" / open a post (slug + lang → GET), edit title/category/excerpt/
   cover-hint + a markdown body textarea, toggle draft↔publish, save via PUT, delete via
   DELETE. Slug + lang lock when editing an existing post (they're the row identity).
-- **TODO (next):** save→static-blog rebuild (workflow_dispatch per-blog); blog authors;
-  DeepL auto-translation; SEO fields; a markdown preview pane.
+- **CP3:** save-triggered **static-blog rebuild**. `Service\RebuildTrigger` (plain
+  ext-curl, best-effort, never throws) fires a GitHub `workflow_dispatch` after a
+  **published** post is saved (drafts don't rebuild) or a post is deleted. Per-blog
+  target on `blog` (`rebuild_repo` "owner/name" + `rebuild_workflow`, default
+  `dev.yml`), edited via `PUT /blogs/{blog}/rebuild-config`; the shared PAT is
+  `BLOG_REBUILD_TOKEN` (one PAT dispatches every blog repo; unset ⇒ no-op).
+  `POST /blogs/{blog}/rebuild` is a manual "Jetzt neu bauen" (503 no token / 422 no
+  repo). Sends `ref` only. UI: a Rebuild-Konfiguration block under the post list.
+- **TODO (next):** blog authors; DeepL auto-translation; SEO fields; a markdown
+  preview pane; move the rebuild token into the runtime settings store.
 
 ## After a change
 
