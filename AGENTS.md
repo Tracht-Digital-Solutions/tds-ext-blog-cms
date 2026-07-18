@@ -86,8 +86,18 @@ Blog-CMS extension, ported from `tds-content-api`'s blog-post model. Read
   API `/admin/settings/blog-cms` (masked: `configured`+`last4`; blank secret = keep).
   Env vars (`BLOG_DEEPL_API_KEY`/`DEEPL_API_KEY`, `BLOG_AUTO_TRANSLATE`,
   `BLOG_REBUILD_TOKEN`) remain the fallback, so existing deployments keep working.
-- **TODO (next):** optionally tie authors to panel users (`is_blog_author`) instead
-  of the standalone registry; the website-cms equivalent settings adoption.
+- **CP9:** **authors tied to panel users.** `blog_author.user_id` (nullable,
+  unsigned, unique — NOT a DB FK; app_user lives in another service, same rule as
+  the ticket refs) links a byline to a tds-auth-api user; the row stays a SNAPSHOT
+  (name/bio/avatar) so the byline survives a user removal. `POST /blog/authors` now
+  takes an optional `user_id` → `upsertAuthorFromUser` (one snapshot per user);
+  absent ⇒ a free-form/guest author. The AuthorManager fetches `/auth/admin/users`
+  (relative, same-origin gateway convention), filters to blog authors
+  (`isBlogAuthor || isAdmin`), and imports them as authors (a "Panel-Nutzer" chip
+  marks linked ones); free-form add stays for guests. Falls back gracefully when
+  `/auth/admin/users` is unreachable.
+- **TODO (next):** the website-cms equivalent has no author concept (blocks, not
+  posts); a markdown preview is done. Larger: per-section structured CMS forms.
 
 ## After a change
 

@@ -132,7 +132,14 @@ final class BlogCmsModule extends AbstractModule
             }
             $bio = self::optional($body['bio'] ?? null, 500);
             $avatar = self::optional($body['avatar_url'] ?? null, 500);
-            return self::json($res, ['id' => $c->get(BlogRepository::class)->createAuthor($name, $bio, $avatar)], 201);
+            $repo = $c->get(BlogRepository::class);
+            // A user_id ties the byline to a panel user (one snapshot per user);
+            // absent ⇒ a free-form / guest author.
+            $userId = (int) ($body['user_id'] ?? 0);
+            $id = $userId > 0
+                ? $repo->upsertAuthorFromUser($userId, $name, $bio, $avatar)
+                : $repo->createAuthor($name, $bio, $avatar);
+            return self::json($res, ['id' => $id], 201);
         });
 
         $app->delete('/blog/authors/{id:[0-9]+}', function (Request $req, Response $res, array $args) use ($c): Response {

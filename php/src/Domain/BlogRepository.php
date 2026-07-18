@@ -70,7 +70,7 @@ final class BlogRepository
     public function authors(): array
     {
         return $this->pdo->query(
-            'SELECT id, name, bio, avatar_url FROM blog_author ORDER BY name, id'
+            'SELECT id, user_id, name, bio, avatar_url FROM blog_author ORDER BY name, id'
         )->fetchAll();
     }
 
@@ -80,6 +80,29 @@ final class BlogRepository
             'INSERT INTO blog_author (name, bio, avatar_url) VALUES (:n, :b, :a)'
         );
         $stmt->execute([':n' => $name, ':b' => $bio, ':a' => $avatarUrl]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
+     * Create or refresh the byline snapshot for a panel user (one per user_id).
+     * Returns the snapshot id.
+     */
+    public function upsertAuthorFromUser(int $userId, string $name, ?string $bio, ?string $avatarUrl): int
+    {
+        $find = $this->pdo->prepare('SELECT id FROM blog_author WHERE user_id = :u LIMIT 1');
+        $find->execute([':u' => $userId]);
+        $existing = $find->fetchColumn();
+        if ($existing !== false) {
+            $upd = $this->pdo->prepare(
+                'UPDATE blog_author SET name = :n, bio = :b, avatar_url = :a WHERE id = :id'
+            );
+            $upd->execute([':n' => $name, ':b' => $bio, ':a' => $avatarUrl, ':id' => (int) $existing]);
+            return (int) $existing;
+        }
+        $ins = $this->pdo->prepare(
+            'INSERT INTO blog_author (user_id, name, bio, avatar_url) VALUES (:u, :n, :b, :a)'
+        );
+        $ins->execute([':u' => $userId, ':n' => $name, ':b' => $bio, ':a' => $avatarUrl]);
         return (int) $this->pdo->lastInsertId();
     }
 

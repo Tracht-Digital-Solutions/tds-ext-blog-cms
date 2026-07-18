@@ -117,9 +117,18 @@ interface PostMeta {
 
 interface Author {
   id: number;
+  user_id?: number | null;
   name: string;
   bio?: string | null;
   avatar_url?: string | null;
+}
+
+interface PanelUser {
+  id: number;
+  email: string;
+  name?: string | null;
+  isAdmin?: boolean;
+  isBlogAuthor?: boolean;
 }
 
 interface PostDraft {
@@ -590,26 +599,53 @@ function AuthorManager({ authors, onChange }: { authors: Author[]; onChange: () 
   const [bio, setBio] = useState("");
   const [avatar, setAvatar] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  const [panelUsers, setPanelUsers] = useState<PanelUser[]>([]);
+  const [pickedUser, setPickedUser] = useState("");
 
-  const add = async () => {
-    if (name.trim().length < 2) {
-      setStatus("Name ist erforderlich.");
-      return;
-    }
+  // Panel users eligible to be a byline: blog authors (admins are implicit).
+  useEffect(() => {
+    fetch("/auth/admin/users", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : { users: [] }))
+      .then((d: { users?: PanelUser[] }) =>
+        setPanelUsers((d.users ?? []).filter((u) => u.isBlogAuthor || u.isAdmin)))
+      .catch(() => setPanelUsers([]));
+  }, []);
+
+  // user_ids already imported as a snapshot, so we don't offer them twice.
+  const linkedUserIds = new Set(authors.map((a) => a.user_id).filter((v): v is number => typeof v === "number"));
+  const importable = panelUsers.filter((u) => !linkedUserIds.has(u.id));
+
+  const post = async (payload: Record<string, unknown>, reset?: () => void) => {
     const res = await api("/blog/authors", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim(), bio: bio.trim(), avatar_url: avatar.trim() }),
+      body: JSON.stringify(payload),
     });
     if (res.ok) {
-      setName("");
-      setBio("");
-      setAvatar("");
+      reset?.();
       setStatus(null);
       onChange();
     } else {
       setStatus(`Fehler (HTTP ${res.status}).`);
     }
+  };
+
+  const add = () => {
+    if (name.trim().length < 2) {
+      setStatus("Name ist erforderlich.");
+      return;
+    }
+    void post({ name: name.trim(), bio: bio.trim(), avatar_url: avatar.trim() }, () => {
+      setName("");
+      setBio("");
+      setAvatar("");
+    });
+  };
+
+  const importUser = () => {
+    const u = panelUsers.find((x) => String(x.id) === pickedUser);
+    if (!u) return;
+    void post({ user_id: u.id, name: (u.name ?? u.email).trim() }, () => setPickedUser(""));
   };
 
   const remove = async (a: Author) => {
@@ -628,14 +664,29 @@ function AuthorManager({ authors, onChange }: { authors: Author[]; onChange: () 
           {authors.map((a) => (
             <li key={a.id} className="flex items-center gap-2">
               <strong>{a.name}</strong>
+              {a.user_id ? <span className="chip chip--violet">Panel-Nutzer</span> : null}
               {a.bio ? <span className="text-xs opacity-60">{a.bio}</span> : null}
               <button type="button" className="danger text-xs ml-auto" onClick={() => remove(a)}>Entfernen</button>
             </li>
           ))}
         </ul>
       )}
+
+      {importable.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 mt-3">
+          <span className="text-sm">Aus Panel-Nutzer:</span>
+          <select value={pickedUser} onChange={(e) => setPickedUser(e.target.value)}>
+            <option value="">— Nutzer wählen —</option>
+            {importable.map((u) => (
+              <option key={u.id} value={u.id}>{u.name ?? u.email}</option>
+            ))}
+          </select>
+          <button type="button" onClick={importUser} disabled={pickedUser === ""}>Als Autor übernehmen</button>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap gap-2 mt-2">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (Gast-Autor)" />
         <input value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Kurzbio (optional)" />
         <input value={avatar} onChange={(e) => setAvatar(e.target.value)} placeholder="Avatar-URL (optional)" />
         <button type="button" onClick={add}>Autor hinzufügen</button>
