@@ -8,7 +8,9 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\App;
 use Tds\Ext\BlogCms\Domain\BlogRepository;
+use Tds\Ext\BlogCms\Service\DeeplTranslator;
 use Tds\Ext\BlogCms\Service\RebuildTrigger;
+use Tds\Ext\BlogCms\Service\TranslationSync;
 use Tds\Panel\Contract\AbstractModule;
 use Tds\Panel\Contract\PermissionDef;
 use Tds\Panel\Contract\UserContext;
@@ -51,6 +53,12 @@ final class BlogCmsModule extends AbstractModule
         }
         if ($c !== null && !$c->has(RebuildTrigger::class)) {
             $c->set(RebuildTrigger::class, static fn () => RebuildTrigger::fromEnv());
+        }
+        if ($c !== null && !$c->has(TranslationSync::class)) {
+            $c->set(TranslationSync::class, static fn ($c) => TranslationSync::fromEnv(
+                $c->get(BlogRepository::class),
+                DeeplTranslator::fromEnv(),
+            ));
         }
 
         $app->get('/blog/summary', function (Request $req, Response $res) use ($c): Response {
@@ -128,7 +136,8 @@ final class BlogCmsModule extends AbstractModule
                 return self::json($res, ['error' => 'title and body are required'], 422);
             }
             $draft = (bool) ($body['draft'] ?? true);
-            $repo->upsertPost((int) $blog['id'], (string) $args['slug'], self::lang($body['lang'] ?? 'de'), [
+            $lang = self::lang($body['lang'] ?? 'de');
+            $data = [
                 'category' => trim((string) ($body['category'] ?? 'allgemein')) ?: 'allgemein',
                 'title' => $title,
                 'excerpt' => (string) ($body['excerpt'] ?? ''),
@@ -137,12 +146,17 @@ final class BlogCmsModule extends AbstractModule
                 'draft' => $draft,
                 // Publishing sets published_at when it's a non-draft with none yet.
                 'published_at' => $draft ? null : ($body['published_at'] ?? date('Y-m-d H:i:s')),
-            ]);
+                // A manual save is authored content — clears any machine-translated flag.
+                'machine_translated' => false,
+            ];
+            $repo->upsertPost((int) $blog['id'], (string) $args['slug'], $lang, $data);
+            // Auto-translate the counterpart language (best-effort, published only).
+            $translated = $c->get(TranslationSync::class)->afterSave((int) $blog['id'], (string) $args['slug'], $lang, $data);
             // A published (non-draft) save re-bakes the static blog; drafts don't.
             if (!$draft) {
                 self::fireRebuild($c->get(RebuildTrigger::class), $blog, 'post ' . (string) $args['slug'] . ' saved');
             }
-            return self::json($res, ['ok' => true]);
+            return self::json($res, ['ok' => true, 'translated' => $translated]);
         });
 
         // Set a blog's rebuild target (repo/workflow); blank clears it.
@@ -186,6 +200,50 @@ final class BlogCmsModule extends AbstractModule
             return self::json($res, ['ok' => true], 202);
         });
 
+        // Catch up translations for pre-existing posts of a blog (button in tds-admin).
+        $app->post('/blogs/{blog:[a-z0-9-]+}/translations/backfill', function (Request $req, Response $res, array $args) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'blog:write', $res)) !== null) {
+                return $deny;
+            }
+            $repo = $c->get(BlogRepository::class);
+            $blog = $repo->findBlog((string) $args['blog']);
+            if ($blog === null) {
+                return self::json($res, ['error' => 'Blog not found'], 404);
+            }
+            $sync = $c->get(TranslationSync::class);
+            if (!$sync->active()) {
+                return self::json($res, ['error' => 'Auto-translation is not configured'], 503);
+            }
+            $created = 0;
+            $skipped = 0;
+            foreach ($repo->posts((int) $blog['id']) as $meta) {
+                // Machine rows are targets, not sources; drafts have nothing to mirror.
+                if ((int) ($meta['machine_translated'] ?? 0) === 1 || (int) ($meta['draft'] ?? 1) === 1) {
+                    $skipped++;
+                    continue;
+                }
+                $full = $repo->getPost((int) $blog['id'], (string) $meta['slug'], (string) $meta['lang']);
+                if ($full === null) {
+                    $skipped++;
+                    continue;
+                }
+                $wrote = $sync->afterSave((int) $blog['id'], (string) $meta['slug'], (string) $meta['lang'], [
+                    'category' => (string) ($full['category'] ?? 'allgemein'),
+                    'title' => (string) ($full['title'] ?? ''),
+                    'excerpt' => (string) ($full['excerpt'] ?? ''),
+                    'body' => (string) ($full['body'] ?? ''),
+                    'cover_hint' => isset($full['cover_hint']) ? (string) $full['cover_hint'] : null,
+                    'draft' => false,
+                    'published_at' => $full['published_at'] ?? null,
+                ]);
+                $wrote ? $created++ : $skipped++;
+            }
+            if ($created > 0) {
+                self::fireRebuild($c->get(RebuildTrigger::class), $blog, 'translation backfill');
+            }
+            return self::json($res, ['created' => $created, 'skipped' => $skipped]);
+        });
+
         $app->delete('/blogs/{blog:[a-z0-9-]+}/posts/{slug:[a-z0-9-]+}', function (Request $req, Response $res, array $args) use ($c): Response {
             if (($deny = self::require($c->get(UserContext::class), 'blog:write', $res)) !== null) {
                 return $deny;
@@ -195,7 +253,10 @@ final class BlogCmsModule extends AbstractModule
             if ($blog === null) {
                 return self::json($res, ['error' => 'Blog not found'], 404);
             }
-            $repo->deletePost((int) $blog['id'], (string) $args['slug'], self::lang($req->getQueryParams()['lang'] ?? 'de'));
+            $lang = self::lang($req->getQueryParams()['lang'] ?? 'de');
+            $repo->deletePost((int) $blog['id'], (string) $args['slug'], $lang);
+            // A machine-translated counterpart was derived from this row — drop it too.
+            $c->get(TranslationSync::class)->afterDelete((int) $blog['id'], (string) $args['slug'], $lang);
             self::fireRebuild($c->get(RebuildTrigger::class), $blog, 'post ' . (string) $args['slug'] . ' deleted');
             return self::json($res, ['ok' => true]);
         });

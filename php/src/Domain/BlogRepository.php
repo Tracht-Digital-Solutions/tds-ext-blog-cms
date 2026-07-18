@@ -70,7 +70,7 @@ final class BlogRepository
     public function posts(int $blogId): array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT slug, lang, category, title, draft, published_at, updated_at
+            'SELECT slug, lang, category, title, draft, machine_translated, published_at, updated_at
              FROM blog_post WHERE blog_id = :b ORDER BY COALESCE(published_at, updated_at) DESC'
         );
         $stmt->execute([':b' => $blogId]);
@@ -81,7 +81,7 @@ final class BlogRepository
     public function getPost(int $blogId, string $slug, string $lang): ?array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT slug, lang, category, title, excerpt, body, cover_hint, published_at, draft
+            'SELECT slug, lang, category, title, excerpt, body, cover_hint, published_at, draft, machine_translated
              FROM blog_post WHERE blog_id = :b AND slug = :s AND lang = :l LIMIT 1'
         );
         $stmt->execute([':b' => $blogId, ':s' => $slug, ':l' => $lang]);
@@ -92,23 +92,24 @@ final class BlogRepository
     /**
      * Insert or update a post by (blog, slug, lang).
      *
-     * @param array{category:string,title:string,excerpt:string,body:string,cover_hint:?string,draft:bool,published_at:?string} $d
+     * @param array{category:string,title:string,excerpt:string,body:string,cover_hint:?string,draft:bool,published_at:?string,machine_translated?:bool} $d
      */
     public function upsertPost(int $blogId, string $slug, string $lang, array $d): void
     {
+        $machine = !empty($d['machine_translated']) ? 1 : 0;
         $stmt = $this->pdo->prepare(
-            'INSERT INTO blog_post (blog_id, slug, lang, category, title, excerpt, body, cover_hint, draft, published_at)
-             VALUES (:b, :s, :l, :cat, :title, :excerpt, :body, :cover, :draft, :pub)
+            'INSERT INTO blog_post (blog_id, slug, lang, category, title, excerpt, body, cover_hint, draft, machine_translated, published_at)
+             VALUES (:b, :s, :l, :cat, :title, :excerpt, :body, :cover, :draft, :mt, :pub)
              ON DUPLICATE KEY UPDATE
                 category = :cat2, title = :title2, excerpt = :excerpt2, body = :body2,
-                cover_hint = :cover2, draft = :draft2, published_at = :pub2'
+                cover_hint = :cover2, draft = :draft2, machine_translated = :mt2, published_at = :pub2'
         );
         $stmt->execute([
             ':b' => $blogId, ':s' => $slug, ':l' => $lang,
             ':cat' => $d['category'], ':title' => $d['title'], ':excerpt' => $d['excerpt'],
-            ':body' => $d['body'], ':cover' => $d['cover_hint'], ':draft' => $d['draft'] ? 1 : 0, ':pub' => $d['published_at'],
+            ':body' => $d['body'], ':cover' => $d['cover_hint'], ':draft' => $d['draft'] ? 1 : 0, ':mt' => $machine, ':pub' => $d['published_at'],
             ':cat2' => $d['category'], ':title2' => $d['title'], ':excerpt2' => $d['excerpt'],
-            ':body2' => $d['body'], ':cover2' => $d['cover_hint'], ':draft2' => $d['draft'] ? 1 : 0, ':pub2' => $d['published_at'],
+            ':body2' => $d['body'], ':cover2' => $d['cover_hint'], ':draft2' => $d['draft'] ? 1 : 0, ':mt2' => $machine, ':pub2' => $d['published_at'],
         ]);
     }
 

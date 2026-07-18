@@ -13,6 +13,7 @@ interface PostMeta {
   lang: string;
   title: string;
   draft: number | boolean;
+  machine_translated?: number | boolean;
   published_at: string | null;
 }
 
@@ -121,6 +122,21 @@ function BlogPosts({ blog, onBack }: { blog: Blog; onBack: () => void }) {
   const [rebuildRepo, setRebuildRepo] = useState(blog.rebuild_repo ?? "");
   const [rebuildWorkflow, setRebuildWorkflow] = useState(blog.rebuild_workflow ?? "dev.yml");
   const [rebuildStatus, setRebuildStatus] = useState<string | null>(null);
+  const [backfillStatus, setBackfillStatus] = useState<string | null>(null);
+
+  const backfill = async () => {
+    setBackfillStatus("Übersetzungen werden erzeugt …");
+    const res = await api(`/blogs/${blog.blog_key}/translations/backfill`, { method: "POST" });
+    if (res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setBackfillStatus(`Fertig: ${d.created ?? 0} erstellt, ${d.skipped ?? 0} übersprungen.`);
+      loadPosts();
+    } else if (res.status === 503) {
+      setBackfillStatus("Automatische Übersetzung ist nicht konfiguriert (BLOG_DEEPL_API_KEY).");
+    } else {
+      setBackfillStatus(`Fehler (HTTP ${res.status}).`);
+    }
+  };
 
   const saveRebuildConfig = async () => {
     const res = await api(`/blogs/${blog.blog_key}/rebuild-config`, {
@@ -212,11 +228,25 @@ function BlogPosts({ blog, onBack }: { blog: Blog; onBack: () => void }) {
                 <span className={`chip chip--${p.draft ? "warning" : "success"}`}>
                   {p.draft ? "Entwurf" : "Veröffentlicht"}
                 </span>
+                {p.machine_translated ? (
+                  <span className="chip chip--info" title="Automatisch übersetzt">Auto-Übersetzung</span>
+                ) : null}
               </button>
             </li>
           ))}
         </ul>
       )}
+
+      <div className="blog-translate">
+        <h3>Automatische Übersetzung</h3>
+        <p className="blog-translate__hint">
+          Beim Speichern eines veröffentlichten Beitrags wird die Gegensprache per DeepL
+          erzeugt (Schlüssel serverseitig via <code>BLOG_DEEPL_API_KEY</code>). Vorhandene
+          Beiträge lassen sich hier nachziehen.
+        </p>
+        {backfillStatus ? <p className="status-pill status-pill--info">{backfillStatus}</p> : null}
+        <button type="button" onClick={backfill}>Übersetzungen nachziehen</button>
+      </div>
 
       <div className="blog-rebuild">
         <h3>Rebuild-Konfiguration</h3>

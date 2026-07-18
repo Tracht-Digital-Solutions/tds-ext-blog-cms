@@ -136,4 +136,18 @@ final class BlogCmsModuleTest extends TestCase
         $res = $this->post($this->appWith(new FakeUser(perms: ['blog:read'])), '/blogs/demo/rebuild', []);
         self::assertSame(403, $res->getStatusCode());
     }
+
+    public function testBackfillRequiresWrite(): void
+    {
+        $res = $this->post($this->appWith(new FakeUser(perms: ['blog:read'])), '/blogs/demo/translations/backfill', []);
+        self::assertSame(403, $res->getStatusCode());
+    }
+
+    public function testDeeplTranslatorConfiguredGate(): void
+    {
+        self::assertFalse((new \Tds\Ext\BlogCms\Service\DeeplTranslator(''))->configured());
+        self::assertTrue((new \Tds\Ext\BlogCms\Service\DeeplTranslator('key:fx'))->configured());
+        // Whitespace-only markdown is returned untouched without any network call.
+        self::assertSame('   ', (new \Tds\Ext\BlogCms\Service\DeeplTranslator('key:fx'))->translateMarkdown('   ', 'en', 'de'));
+    }
 }

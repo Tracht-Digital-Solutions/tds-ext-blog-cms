@@ -41,8 +41,20 @@ Blog-CMS extension, ported from `tds-content-api`'s blog-post model. Read
   `BLOG_REBUILD_TOKEN` (one PAT dispatches every blog repo; unset ⇒ no-op).
   `POST /blogs/{blog}/rebuild` is a manual "Jetzt neu bauen" (503 no token / 422 no
   repo). Sends `ref` only. UI: a Rebuild-Konfiguration block under the post list.
-- **TODO (next):** blog authors; DeepL auto-translation; SEO fields; a markdown
-  preview pane; move the rebuild token into the runtime settings store.
+- **CP4:** **DeepL auto-translation** (save-time sync, ported from tds-content-api).
+  `blog_post.machine_translated` flags auto-generated rows. On a **published** post
+  save, `Service\TranslationSync` translates title/excerpt/category (plain) + body
+  (markdown, code shielded) into the counterpart language and upserts it
+  (`machine_translated=1`) — but only when that counterpart is absent or itself
+  machine-made; a manually authored counterpart is never touched, and a manual save
+  clears the row's own flag. Delete cascades onto a machine counterpart. `Service\
+  DeeplTranslator` is a curl port (no Guzzle; `:fx` key ⇒ free endpoint; `en`→`EN-GB`).
+  Config: `BLOG_DEEPL_API_KEY` (+ `BLOG_AUTO_TRANSLATE=0` to opt out); unset ⇒ no-op.
+  `POST /blogs/{blog}/translations/backfill` (blog:write, 503 when inactive) catches up
+  pre-existing posts. UI: an "Auto-Übersetzung" badge on machine rows + a backfill button.
+  Writes go through the repo (never the route) so the sync can't ping-pong; drafts skip.
+- **TODO (next):** blog authors; SEO fields; a markdown preview pane; move DeepL +
+  rebuild tokens into the runtime settings store; website-cms block-JSON translation.
 
 ## After a change
 
