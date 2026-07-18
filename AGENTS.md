@@ -53,8 +53,18 @@ Blog-CMS extension, ported from `tds-content-api`'s blog-post model. Read
   `POST /blogs/{blog}/translations/backfill` (blog:write, 503 when inactive) catches up
   pre-existing posts. UI: an "Auto-Übersetzung" badge on machine rows + a backfill button.
   Writes go through the repo (never the route) so the sync can't ping-pong; drafts skip.
-- **TODO (next):** blog authors; SEO fields; a markdown preview pane; move DeepL +
-  rebuild tokens into the runtime settings store; website-cms block-JSON translation.
+- **CP5:** **author bylines**. A self-contained `blog_author` registry (name/bio/
+  avatar_url), independent of panel users, with a nullable `blog_post.author_id` FK
+  (`ON DELETE SET NULL` — removing an author detaches its posts, never cascades).
+  Routes: `GET`/`POST /blog/authors` + `DELETE /blog/authors/{id}` (read/write RBAC).
+  The post upsert takes an optional `author_id` (an unknown id is dropped, not
+  rejected); `getPost` returns a nested `author` object for the public byline and
+  `posts` includes `author_name`. TranslationSync carries the same `author_id` onto
+  the machine-translated counterpart (one byline across languages). UI: an author
+  dropdown in the editor + an "Autoren" manager (add/remove) under the post list.
+- **TODO (next):** SEO fields; a markdown preview pane; move DeepL + rebuild tokens
+  into the runtime settings store; optionally tie authors to panel users
+  (`is_blog_author`) instead of the standalone registry.
 
 ## After a change
 

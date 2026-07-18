@@ -143,6 +143,20 @@ final class BlogCmsModuleTest extends TestCase
         self::assertSame(403, $res->getStatusCode());
     }
 
+    public function testAuthorsListRequiresRead(): void
+    {
+        self::assertSame(401, $this->get($this->appWith(new FakeUser(auth: false)), '/blog/authors')->getStatusCode());
+        self::assertSame(403, $this->get($this->appWith(new FakeUser(perms: [])), '/blog/authors')->getStatusCode());
+    }
+
+    public function testCreateAuthorRequiresWriteAndName(): void
+    {
+        // read-only → 403 before the repo.
+        self::assertSame(403, $this->post($this->appWith(new FakeUser(perms: ['blog:read'])), '/blog/authors', ['name' => 'A. Autor'])->getStatusCode());
+        // writer with a too-short name → 422 (validation before the repo).
+        self::assertSame(422, $this->post($this->appWith(new FakeUser(perms: ['blog:write'])), '/blog/authors', ['name' => 'A'])->getStatusCode());
+    }
+
     public function testDeeplTranslatorConfiguredGate(): void
     {
         self::assertFalse((new \Tds\Ext\BlogCms\Service\DeeplTranslator(''))->configured());

@@ -42,7 +42,7 @@ final class TranslationSync
     }
 
     /**
-     * @param array{category:string,title:string,excerpt:string,body:string,cover_hint:?string,draft:bool,published_at:?string} $source
+     * @param array{category:string,title:string,excerpt:string,body:string,cover_hint:?string,draft:bool,published_at:?string,author_id?:?int} $source
      * @return bool true when a counterpart row was actually written
      */
     public function afterSave(int $blogId, string $slug, string $sourceLang, array $source): bool
@@ -79,6 +79,8 @@ final class TranslationSync
             'excerpt' => $meta[1],
             'body' => $body,
             'cover_hint' => $source['cover_hint'],
+            // The byline is the same person in either language.
+            'author_id' => $source['author_id'] ?? null,
             'draft' => false,
             'published_at' => $source['published_at'],
             'machine_translated' => true,

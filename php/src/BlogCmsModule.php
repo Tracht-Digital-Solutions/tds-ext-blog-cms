@@ -92,6 +92,36 @@ final class BlogCmsModule extends AbstractModule
             return self::json($res, ['id' => $repo->createBlog($key, $name)], 201);
         });
 
+        // --- authors (byline registry, blog-agnostic) -------------------------
+        $app->get('/blog/authors', function (Request $req, Response $res) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'blog:read', $res)) !== null) {
+                return $deny;
+            }
+            return self::json($res, ['authors' => $c->get(BlogRepository::class)->authors()]);
+        });
+
+        $app->post('/blog/authors', function (Request $req, Response $res) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'blog:write', $res)) !== null) {
+                return $deny;
+            }
+            $body = (array) $req->getParsedBody();
+            $name = trim((string) ($body['name'] ?? ''));
+            if (mb_strlen($name) < 2) {
+                return self::json($res, ['error' => 'name is required'], 422);
+            }
+            $bio = self::optional($body['bio'] ?? null, 500);
+            $avatar = self::optional($body['avatar_url'] ?? null, 500);
+            return self::json($res, ['id' => $c->get(BlogRepository::class)->createAuthor($name, $bio, $avatar)], 201);
+        });
+
+        $app->delete('/blog/authors/{id:[0-9]+}', function (Request $req, Response $res, array $args) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'blog:write', $res)) !== null) {
+                return $deny;
+            }
+            $c->get(BlogRepository::class)->deleteAuthor((int) $args['id']);
+            return self::json($res, ['ok' => true]);
+        });
+
         $app->get('/blogs/{blog:[a-z0-9-]+}/posts', function (Request $req, Response $res, array $args) use ($c): Response {
             if (($deny = self::require($c->get(UserContext::class), 'blog:read', $res)) !== null) {
                 return $deny;
@@ -137,12 +167,18 @@ final class BlogCmsModule extends AbstractModule
             }
             $draft = (bool) ($body['draft'] ?? true);
             $lang = self::lang($body['lang'] ?? 'de');
+            // Author is optional; an unknown id is dropped rather than rejected.
+            $authorId = (int) ($body['author_id'] ?? 0);
+            if ($authorId > 0 && !$repo->authorExists($authorId)) {
+                $authorId = 0;
+            }
             $data = [
                 'category' => trim((string) ($body['category'] ?? 'allgemein')) ?: 'allgemein',
                 'title' => $title,
                 'excerpt' => (string) ($body['excerpt'] ?? ''),
                 'body' => $content,
                 'cover_hint' => isset($body['cover_hint']) && $body['cover_hint'] !== '' ? (string) $body['cover_hint'] : null,
+                'author_id' => $authorId > 0 ? $authorId : null,
                 'draft' => $draft,
                 // Publishing sets published_at when it's a non-draft with none yet.
                 'published_at' => $draft ? null : ($body['published_at'] ?? date('Y-m-d H:i:s')),
@@ -289,6 +325,12 @@ final class BlogCmsModule extends AbstractModule
     {
         $v = is_string($value) ? strtolower($value) : '';
         return in_array($v, self::LANGS, true) ? $v : 'de';
+    }
+
+    private static function optional(mixed $value, int $limit): ?string
+    {
+        $v = trim((string) ($value ?? ''));
+        return $v === '' ? null : mb_substr($v, 0, $limit);
     }
 
     private static function json(Response $res, mixed $data, int $status = 200): Response

@@ -14,7 +14,15 @@ interface PostMeta {
   title: string;
   draft: number | boolean;
   machine_translated?: number | boolean;
+  author_name?: string | null;
   published_at: string | null;
+}
+
+interface Author {
+  id: number;
+  name: string;
+  bio?: string | null;
+  avatar_url?: string | null;
 }
 
 interface PostDraft {
@@ -25,6 +33,7 @@ interface PostDraft {
   excerpt: string;
   cover_hint: string;
   body: string;
+  author_id: number;
   draft: boolean;
 }
 
@@ -38,6 +47,7 @@ const EMPTY_POST: PostDraft = {
   excerpt: "",
   cover_hint: "",
   body: "",
+  author_id: 0,
   draft: true,
 };
 
@@ -123,6 +133,13 @@ function BlogPosts({ blog, onBack }: { blog: Blog; onBack: () => void }) {
   const [rebuildWorkflow, setRebuildWorkflow] = useState(blog.rebuild_workflow ?? "dev.yml");
   const [rebuildStatus, setRebuildStatus] = useState<string | null>(null);
   const [backfillStatus, setBackfillStatus] = useState<string | null>(null);
+  const [authors, setAuthors] = useState<Author[]>([]);
+
+  const loadAuthors = () =>
+    api("/blog/authors")
+      .then((r) => (r.ok ? r.json() : { authors: [] }))
+      .then((d) => setAuthors(d.authors ?? []))
+      .catch(() => setAuthors([]));
 
   const backfill = async () => {
     setBackfillStatus("Übersetzungen werden erzeugt …");
@@ -169,6 +186,7 @@ function BlogPosts({ blog, onBack }: { blog: Blog; onBack: () => void }) {
 
   useEffect(() => {
     loadPosts();
+    loadAuthors();
   }, []);
 
   const openPost = async (p: PostMeta) => {
@@ -183,6 +201,7 @@ function BlogPosts({ blog, onBack }: { blog: Blog; onBack: () => void }) {
       excerpt: (d.excerpt as string) ?? "",
       cover_hint: (d.cover_hint as string) ?? "",
       body: (d.body as string) ?? "",
+      author_id: (d.author_id as number) ?? 0,
       draft: Boolean(d.draft ?? p.draft),
     });
   };
@@ -198,6 +217,7 @@ function BlogPosts({ blog, onBack }: { blog: Blog; onBack: () => void }) {
         blogKey={blog.blog_key}
         post={editing}
         isExisting={isExisting}
+        authors={authors}
         onDone={() => {
           setEditing(null);
           loadPosts();
@@ -231,11 +251,14 @@ function BlogPosts({ blog, onBack }: { blog: Blog; onBack: () => void }) {
                 {p.machine_translated ? (
                   <span className="chip chip--info" title="Automatisch übersetzt">Auto-Übersetzung</span>
                 ) : null}
+                {p.author_name ? <span className="text-xs opacity-60"> · {p.author_name}</span> : null}
               </button>
             </li>
           ))}
         </ul>
       )}
+
+      <AuthorManager authors={authors} onChange={loadAuthors} />
 
       <div className="blog-translate">
         <h3>Automatische Übersetzung</h3>
@@ -280,12 +303,14 @@ function PostEditor({
   blogKey,
   post,
   isExisting,
+  authors,
   onDone,
   onCancel,
 }: {
   blogKey: string;
   post: PostDraft;
   isExisting: boolean;
+  authors: Author[];
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -317,6 +342,7 @@ function PostEditor({
         excerpt: form.excerpt.trim(),
         cover_hint: form.cover_hint.trim(),
         body: form.body,
+        author_id: form.author_id,
         draft: form.draft,
       }),
     });
@@ -365,6 +391,15 @@ function PostEditor({
           Kategorie
           <input value={form.category} onChange={(e) => set("category", e.target.value)} placeholder="allgemein" />
         </label>
+        <label>
+          Autor
+          <select value={String(form.author_id)} onChange={(e) => set("author_id", Number(e.target.value))}>
+            <option value="0">— kein Autor —</option>
+            {authors.map((a) => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <label className="blog-editor__field">
@@ -407,6 +442,67 @@ function PostEditor({
           <button type="button" className="danger" onClick={remove} disabled={busy}>Löschen</button>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/** Manage the byline registry: list authors, add one, remove one. */
+function AuthorManager({ authors, onChange }: { authors: Author[]; onChange: () => void }) {
+  const [name, setName] = useState("");
+  const [bio, setBio] = useState("");
+  const [avatar, setAvatar] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+
+  const add = async () => {
+    if (name.trim().length < 2) {
+      setStatus("Name ist erforderlich.");
+      return;
+    }
+    const res = await api("/blog/authors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name.trim(), bio: bio.trim(), avatar_url: avatar.trim() }),
+    });
+    if (res.ok) {
+      setName("");
+      setBio("");
+      setAvatar("");
+      setStatus(null);
+      onChange();
+    } else {
+      setStatus(`Fehler (HTTP ${res.status}).`);
+    }
+  };
+
+  const remove = async (a: Author) => {
+    if (!window.confirm(`Autor „${a.name}“ entfernen? Beiträge behalten die Byline nicht.`)) return;
+    const res = await api(`/blog/authors/${a.id}`, { method: "DELETE" });
+    if (res.ok) onChange();
+  };
+
+  return (
+    <div className="blog-authors">
+      <h3>Autoren</h3>
+      {authors.length === 0 ? (
+        <p className="text-xs opacity-60">Noch keine Autoren.</p>
+      ) : (
+        <ul className="blog-authors__list">
+          {authors.map((a) => (
+            <li key={a.id} className="flex items-center gap-2">
+              <strong>{a.name}</strong>
+              {a.bio ? <span className="text-xs opacity-60">{a.bio}</span> : null}
+              <button type="button" className="danger text-xs ml-auto" onClick={() => remove(a)}>Entfernen</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap gap-2 mt-2">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
+        <input value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Kurzbio (optional)" />
+        <input value={avatar} onChange={(e) => setAvatar(e.target.value)} placeholder="Avatar-URL (optional)" />
+        <button type="button" onClick={add}>Autor hinzufügen</button>
+      </div>
+      {status ? <p className="status-pill status-pill--info">{status}</p> : null}
     </div>
   );
 }
