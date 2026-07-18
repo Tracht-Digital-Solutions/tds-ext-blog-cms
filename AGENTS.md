@@ -29,8 +29,12 @@ Blog-CMS extension, ported from `tds-content-api`'s blog-post model. Read
 
 - **CP1:** `blog` + `blog_post` schema, `Domain\BlogRepository`, blog + post CRUD
   (`/blogs`, `/blog/summary`) with RBAC, the posts widget + blogs/posts list UI.
-- **TODO (next):** markdown post editor UI; save→static-blog rebuild
-  (workflow_dispatch per-blog); blog authors; DeepL auto-translation; SEO fields.
+- **CP2:** the per-post **markdown editor UI** (`PostEditor` in `islands/BlogsList.tsx`)
+  — "Neuer Beitrag" / open a post (slug + lang → GET), edit title/category/excerpt/
+  cover-hint + a markdown body textarea, toggle draft↔publish, save via PUT, delete via
+  DELETE. Slug + lang lock when editing an existing post (they're the row identity).
+- **TODO (next):** save→static-blog rebuild (workflow_dispatch per-blog); blog authors;
+  DeepL auto-translation; SEO fields; a markdown preview pane.
 
 ## After a change
 
