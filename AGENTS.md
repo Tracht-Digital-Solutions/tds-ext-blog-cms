@@ -62,8 +62,16 @@ Blog-CMS extension, ported from `tds-content-api`'s blog-post model. Read
   `posts` includes `author_name`. TranslationSync carries the same `author_id` onto
   the machine-translated counterpart (one byline across languages). UI: an author
   dropdown in the editor + an "Autoren" manager (add/remove) under the post list.
-- **TODO (next):** SEO fields; a markdown preview pane; move DeepL + rebuild tokens
-  into the runtime settings store; optionally tie authors to panel users
+- **CP6:** **SEO fields** — `blog_post.meta_description` (≤300) + `tags` (≤200,
+  comma-separated keyword tokens), both nullable (a post without them falls back to
+  excerpt/category on the public page). Surfaced in the editor, returned by
+  `getPost` for the static blog to bake `<meta name=description>`/keywords.
+  TranslationSync translates the meta description onto the counterpart (batched with
+  the core fields) but keeps `tags` identical across languages (stable keyword
+  tokens). Migration `AddBlogCmsSeo`.
+- **TODO (next):** a markdown preview pane (needs client-side sanitisation —
+  isomorphic-dompurify — per the `set:html` note); move DeepL + rebuild tokens into
+  the runtime settings store; optionally tie authors to panel users
   (`is_blog_author`) instead of the standalone registry.
 
 ## After a change

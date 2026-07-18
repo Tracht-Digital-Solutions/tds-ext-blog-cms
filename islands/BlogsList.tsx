@@ -31,6 +31,8 @@ interface PostDraft {
   category: string;
   title: string;
   excerpt: string;
+  meta_description: string;
+  tags: string;
   cover_hint: string;
   body: string;
   author_id: number;
@@ -45,6 +47,8 @@ const EMPTY_POST: PostDraft = {
   category: "allgemein",
   title: "",
   excerpt: "",
+  meta_description: "",
+  tags: "",
   cover_hint: "",
   body: "",
   author_id: 0,
@@ -199,6 +203,8 @@ function BlogPosts({ blog, onBack }: { blog: Blog; onBack: () => void }) {
       category: (d.category as string) ?? "allgemein",
       title: (d.title as string) ?? p.title,
       excerpt: (d.excerpt as string) ?? "",
+      meta_description: (d.meta_description as string) ?? "",
+      tags: (d.tags as string) ?? "",
       cover_hint: (d.cover_hint as string) ?? "",
       body: (d.body as string) ?? "",
       author_id: (d.author_id as number) ?? 0,
@@ -340,6 +346,8 @@ function PostEditor({
         category: form.category.trim() || "allgemein",
         title: form.title.trim(),
         excerpt: form.excerpt.trim(),
+        meta_description: form.meta_description.trim(),
+        tags: form.tags.trim(),
         cover_hint: form.cover_hint.trim(),
         body: form.body,
         author_id: form.author_id,
@@ -415,6 +423,26 @@ function PostEditor({
       <label className="blog-editor__field">
         Cover-Hinweis
         <input value={form.cover_hint} onChange={(e) => set("cover_hint", e.target.value)} placeholder="Bild-Hinweis (optional)" />
+      </label>
+
+      <label className="blog-editor__field">
+        Meta-Description (SEO)
+        <input
+          value={form.meta_description}
+          onChange={(e) => set("meta_description", e.target.value)}
+          maxLength={300}
+          placeholder="Suchmaschinen-Beschreibung (≤160 Zeichen ideal)"
+        />
+      </label>
+
+      <label className="blog-editor__field">
+        Tags / Keywords
+        <input
+          value={form.tags}
+          onChange={(e) => set("tags", e.target.value)}
+          maxLength={200}
+          placeholder="komma, getrennt, keywords"
+        />
       </label>
 
       <label className="blog-editor__field">

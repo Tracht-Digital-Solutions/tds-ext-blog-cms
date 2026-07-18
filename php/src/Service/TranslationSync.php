@@ -42,7 +42,7 @@ final class TranslationSync
     }
 
     /**
-     * @param array{category:string,title:string,excerpt:string,body:string,cover_hint:?string,draft:bool,published_at:?string,author_id?:?int} $source
+     * @param array{category:string,title:string,excerpt:string,body:string,cover_hint:?string,draft:bool,published_at:?string,author_id?:?int,meta_description?:?string,tags?:?string} $source
      * @return bool true when a counterpart row was actually written
      */
     public function afterSave(int $blogId, string $slug, string $sourceLang, array $source): bool
@@ -57,11 +57,14 @@ final class TranslationSync
             return false; // manually authored translation — never touched
         }
 
-        $meta = $this->translator->translateTexts(
-            [$source['title'], $source['excerpt'], $source['category']],
-            $other,
-            $sourceLang,
-        );
+        // The SEO meta description rides the same batched request as the core
+        // fields (it must not stay in the source language on the counterpart page).
+        $sourceMeta = isset($source['meta_description']) ? trim((string) $source['meta_description']) : '';
+        $texts = [$source['title'], $source['excerpt'], $source['category']];
+        if ($sourceMeta !== '') {
+            $texts[] = $sourceMeta;
+        }
+        $meta = $this->translator->translateTexts($texts, $other, $sourceLang);
         $body = $this->translator->translateMarkdown($source['body'], $other, $sourceLang);
         if ($meta === null || $body === null) {
             error_log(sprintf(
@@ -77,6 +80,9 @@ final class TranslationSync
             'category' => self::clampCategory($meta[2], $source['category']),
             'title' => $meta[0],
             'excerpt' => $meta[1],
+            'meta_description' => $sourceMeta !== '' ? ($meta[3] ?? null) : null,
+            // Tags are stable keyword tokens — kept identical across languages.
+            'tags' => $source['tags'] ?? null,
             'body' => $body,
             'cover_hint' => $source['cover_hint'],
             // The byline is the same person in either language.
