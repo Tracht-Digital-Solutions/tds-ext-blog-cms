@@ -3,7 +3,7 @@
   "description": "Blog-CMS extension (backend Module) for the TDS panel platform.",
   "type": "library",
   "license": "proprietary",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "require": {
     "php": ">=8.1",
     "slim/slim": "^4.13",
