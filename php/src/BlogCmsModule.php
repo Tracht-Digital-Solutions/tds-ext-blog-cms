@@ -13,6 +13,7 @@ use Tds\Ext\BlogCms\Service\RebuildTrigger;
 use Tds\Ext\BlogCms\Service\TranslationSync;
 use Tds\Panel\Contract\AbstractModule;
 use Tds\Panel\Contract\PermissionDef;
+use Tds\Panel\Contract\SettingsStore;
 use Tds\Panel\Contract\UserContext;
 
 /**
@@ -52,13 +53,33 @@ final class BlogCmsModule extends AbstractModule
             $c->set(BlogRepository::class, static fn ($c) => new BlogRepository($c->get(PDO::class)));
         }
         if ($c !== null && !$c->has(RebuildTrigger::class)) {
-            $c->set(RebuildTrigger::class, static fn () => RebuildTrigger::fromEnv());
+            $c->set(RebuildTrigger::class, static function ($c): RebuildTrigger {
+                // DB-first (settings store), env fallback for the rebuild PAT.
+                $token = self::setting($c)?->getSecret('blog-cms', 'rebuild_token');
+                if ($token === null || $token === '') {
+                    $token = (string) (getenv('BLOG_REBUILD_TOKEN') ?: '');
+                }
+                $ref = (string) (getenv('BLOG_REBUILD_REF') ?: 'main');
+                return new RebuildTrigger($token, $ref !== '' ? $ref : 'main');
+            });
         }
         if ($c !== null && !$c->has(TranslationSync::class)) {
-            $c->set(TranslationSync::class, static fn ($c) => TranslationSync::fromEnv(
-                $c->get(BlogRepository::class),
-                DeeplTranslator::fromEnv(),
-            ));
+            $c->set(TranslationSync::class, static function ($c): TranslationSync {
+                $store = self::setting($c);
+                // DeepL key: settings store → BLOG_DEEPL_API_KEY → DEEPL_API_KEY.
+                $key = $store?->getSecret('blog-cms', 'deepl_api_key');
+                if ($key === null || $key === '') {
+                    $key = (string) (getenv('BLOG_DEEPL_API_KEY') ?: getenv('DEEPL_API_KEY') ?: '');
+                }
+                // Auto-translate flag: settings store ("0" disables) → env → default on.
+                $flag = $store?->get('blog-cms', 'auto_translate');
+                if ($flag === null) {
+                    $envFlag = getenv('BLOG_AUTO_TRANSLATE');
+                    $flag = $envFlag === false ? '1' : (string) $envFlag;
+                }
+                $enabled = !in_array(strtolower($flag), ['0', 'false', 'no', 'off'], true);
+                return new TranslationSync($c->get(BlogRepository::class), new DeeplTranslator($key), $enabled);
+            });
         }
 
         $app->get('/blog/summary', function (Request $req, Response $res) use ($c): Response {
@@ -336,6 +357,15 @@ final class BlogCmsModule extends AbstractModule
     {
         $v = trim((string) ($value ?? ''));
         return $v === '' ? null : mb_substr($v, 0, $limit);
+    }
+
+    /**
+     * The core's settings store if the base bound it (it resolves the contract
+     * interface), else null — so an isolated unit test (no core) falls back to env.
+     */
+    private static function setting(\Psr\Container\ContainerInterface $c): ?SettingsStore
+    {
+        return $c->has(SettingsStore::class) ? $c->get(SettingsStore::class) : null;
     }
 
     private static function json(Response $res, mixed $data, int $status = 200): Response

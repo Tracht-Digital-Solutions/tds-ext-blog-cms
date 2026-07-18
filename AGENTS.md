@@ -77,9 +77,17 @@ Blog-CMS extension, ported from `tds-content-api`'s blog-post model. Read
   dependency** (this is why the `set:html` sanitiser note doesn't apply to the
   preview). Covers fenced/inline code, headings, bold, italic, links, unordered
   lists, paragraphs; the public blog still uses the full build-time pipeline.
-- **TODO (next):** move DeepL + rebuild tokens into the runtime settings store;
-  optionally tie authors to panel users (`is_blog_author`) instead of the standalone
-  registry.
+- **CP8:** **runtime settings store adoption.** The DeepL key + auto-translate flag
+  + rebuild token are now read **DB-first with env fallback** via the core's
+  `SettingsStore` (contract interface, resolved from the container; null in isolated
+  tests ⇒ env-only). Namespace `blog-cms`, keys `deepl_api_key`/`rebuild_token`
+  (secret, AES-GCM-encrypted by the core) + `auto_translate` (flag). The settings
+  slot (`islands/Settings.astro` → `BlogSettings` island) reads/writes the core admin
+  API `/admin/settings/blog-cms` (masked: `configured`+`last4`; blank secret = keep).
+  Env vars (`BLOG_DEEPL_API_KEY`/`DEEPL_API_KEY`, `BLOG_AUTO_TRANSLATE`,
+  `BLOG_REBUILD_TOKEN`) remain the fallback, so existing deployments keep working.
+- **TODO (next):** optionally tie authors to panel users (`is_blog_author`) instead
+  of the standalone registry; the website-cms equivalent settings adoption.
 
 ## After a change
 

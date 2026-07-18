@@ -1,9 +1,13 @@
 ---
 // Blog-CMS settings section, rendered by the base Einstellungen host via
-// virtual:panel-settings. Checkpoint-1 placeholder; per-blog rebuild-hook config
-// + DeepL auto-translation toggles land with the rebuild/translation checkpoint.
+// virtual:panel-settings. Hosts the BlogSettings island, which reads/writes the
+// core runtime settings store (`/admin/settings/blog-cms`): DeepL key,
+// auto-translate flag, and the rebuild token — DB-first, env fallback in the
+// backend. Secrets are stored AES-256-GCM-encrypted by the core.
+import BlogSettings from "./BlogSettings.tsx";
 ---
 
 <div class="settings-section settings-section--blog-cms">
-  <p>Blog-CMS-Einstellungen (Rebuild-Hooks &amp; Auto-Übersetzung folgen).</p>
+  <h3>Blog-CMS</h3>
+  <BlogSettings client:load />
 </div>
