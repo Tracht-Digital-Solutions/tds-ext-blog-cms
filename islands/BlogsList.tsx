@@ -1,5 +1,102 @@
 import { useEffect, useState } from "react";
 
+/**
+ * Minimal, safe-by-construction markdown → HTML for the editor PREVIEW only (the
+ * public blog uses the full build-time pipeline). All text is HTML-escaped BEFORE
+ * any transform, so raw HTML / scripts in the source become inert text — no
+ * sanitizer needed and no XSS surface (this is why we don't pull in marked +
+ * dompurify). Covers the common subset: fenced/inline code, headings, bold,
+ * italic, links (http/https/mailto/relative only), unordered lists, paragraphs.
+ */
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function safeHref(url: string): string | null {
+  const u = url.trim();
+  return /^(https?:\/\/|mailto:|\/|#)/i.test(u) ? escapeHtml(u) : null;
+}
+
+function inlineMd(escaped: string): string {
+  // Operates on already-escaped text — only our own tags are ever emitted.
+  return escaped
+    .replace(/`([^`]+)`/g, (_m, c) => `<code>${c}</code>`)
+    .replace(/\*\*([^*]+)\*\*/g, (_m, c) => `<strong>${c}</strong>`)
+    .replace(/(^|[^*])\*([^*]+)\*/g, (_m, pre, c) => `${pre}<em>${c}</em>`)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, text, url) => {
+      const href = safeHref(url);
+      return href ? `<a href="${href}" rel="noopener" target="_blank">${text}</a>` : m;
+    });
+}
+
+function renderMarkdown(src: string): string {
+  const lines = src.replace(/\r\n/g, "\n").split("\n");
+  const out: string[] = [];
+  let inFence = false;
+  let fenceBuf: string[] = [];
+  let listBuf: string[] = [];
+  let paraBuf: string[] = [];
+
+  const flushList = () => {
+    if (listBuf.length) {
+      out.push(`<ul>${listBuf.map((li) => `<li>${inlineMd(escapeHtml(li))}</li>`).join("")}</ul>`);
+      listBuf = [];
+    }
+  };
+  const flushPara = () => {
+    if (paraBuf.length) {
+      out.push(`<p>${inlineMd(escapeHtml(paraBuf.join(" ")))}</p>`);
+      paraBuf = [];
+    }
+  };
+
+  for (const line of lines) {
+    if (line.trim().startsWith("```")) {
+      if (inFence) {
+        out.push(`<pre><code>${escapeHtml(fenceBuf.join("\n"))}</code></pre>`);
+        fenceBuf = [];
+        inFence = false;
+      } else {
+        flushPara();
+        flushList();
+        inFence = true;
+      }
+      continue;
+    }
+    if (inFence) {
+      fenceBuf.push(line);
+      continue;
+    }
+    const heading = /^(#{1,4})\s+(.*)$/.exec(line);
+    if (heading) {
+      flushPara();
+      flushList();
+      const level = heading[1].length;
+      out.push(`<h${level}>${inlineMd(escapeHtml(heading[2]))}</h${level}>`);
+      continue;
+    }
+    const li = /^[-*]\s+(.*)$/.exec(line);
+    if (li) {
+      flushPara();
+      listBuf.push(li[1]);
+      continue;
+    }
+    if (line.trim() === "") {
+      flushPara();
+      flushList();
+      continue;
+    }
+    flushList();
+    paraBuf.push(line.trim());
+  }
+  if (inFence) {
+    out.push(`<pre><code>${escapeHtml(fenceBuf.join("\n"))}</code></pre>`);
+  }
+  flushPara();
+  flushList();
+  return out.join("\n");
+}
+
 interface Blog {
   id: number;
   blog_key: string;
@@ -323,6 +420,7 @@ function PostEditor({
   const [form, setForm] = useState<PostDraft>(post);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(false);
 
   const set = <K extends keyof PostDraft>(field: K, value: PostDraft[K]) =>
     setForm((f) => ({ ...f, [field]: value }));
@@ -445,17 +543,29 @@ function PostEditor({
         />
       </label>
 
-      <label className="blog-editor__field">
-        Inhalt (Markdown)
-        <textarea
-          className="blog-editor__body"
-          value={form.body}
-          onChange={(e) => set("body", e.target.value)}
-          rows={18}
-          spellCheck={false}
-          placeholder="# Überschrift&#10;&#10;Text in Markdown …"
-        />
-      </label>
+      <div className="blog-editor__field">
+        <div className="flex items-center gap-3">
+          <span>Inhalt (Markdown)</span>
+          <button type="button" className="text-xs ml-auto" onClick={() => setPreview((v) => !v)}>
+            {preview ? "Bearbeiten" : "Vorschau"}
+          </button>
+        </div>
+        {preview ? (
+          <div
+            className="blog-editor__preview prose"
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(form.body) }}
+          />
+        ) : (
+          <textarea
+            className="blog-editor__body"
+            value={form.body}
+            onChange={(e) => set("body", e.target.value)}
+            rows={18}
+            spellCheck={false}
+            placeholder="# Überschrift&#10;&#10;Text in Markdown …"
+          />
+        )}
+      </div>
 
       <label className="blog-editor__publish">
         <input type="checkbox" checked={!form.draft} onChange={(e) => set("draft", !e.target.checked)} />

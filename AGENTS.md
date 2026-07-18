@@ -69,10 +69,17 @@ Blog-CMS extension, ported from `tds-content-api`'s blog-post model. Read
   TranslationSync translates the meta description onto the counterpart (batched with
   the core fields) but keeps `tags` identical across languages (stable keyword
   tokens). Migration `AddBlogCmsSeo`.
-- **TODO (next):** a markdown preview pane (needs client-side sanitisation —
-  isomorphic-dompurify — per the `set:html` note); move DeepL + rebuild tokens into
-  the runtime settings store; optionally tie authors to panel users
-  (`is_blog_author`) instead of the standalone registry.
+- **CP7:** a **markdown preview pane** in the editor (Vorschau/Bearbeiten toggle).
+  Uses a tiny **escape-first** renderer (`renderMarkdown` in `islands/BlogsList.tsx`):
+  every text run is HTML-escaped *before* any markdown transform, so raw HTML /
+  `<script>` in the body become inert text and link hrefs are allowlisted
+  (http/https/mailto/relative only) — **safe by construction, no marked/dompurify
+  dependency** (this is why the `set:html` sanitiser note doesn't apply to the
+  preview). Covers fenced/inline code, headings, bold, italic, links, unordered
+  lists, paragraphs; the public blog still uses the full build-time pipeline.
+- **TODO (next):** move DeepL + rebuild tokens into the runtime settings store;
+  optionally tie authors to panel users (`is_blog_author`) instead of the standalone
+  registry.
 
 ## After a change
 
