@@ -1,7 +1,7 @@
-# AGENTS.md — tds-ext-blog-cms
+# AGENTS.md — tds-ext-blog-cms-pkg
 
 Blog-CMS extension, ported from `tds-content-api`'s blog-post model. Read
-`tds-panel-contract` + `tds-core-panel-api` AGENTS first.
+`tds-panel-contract-pkg` + `tds-core-panel-api` AGENTS first.
 
 ## Model
 

@@ -1,4 +1,4 @@
-# tds-ext-blog-cms
+# tds-ext-blog-cms-pkg
 
 The **Blog-CMS** as a panel extension, ported from `tds-content-api`'s blog-post
 model. Edits blog posts (title / excerpt / body / draft / publish per **blog ×

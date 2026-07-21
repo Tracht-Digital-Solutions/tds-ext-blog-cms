@@ -393,7 +393,7 @@ function BlogPosts({ blog, onBack }: { blog: Blog; onBack: () => void }) {
           <input
             value={rebuildRepo}
             onChange={(e) => setRebuildRepo(e.target.value)}
-            placeholder="Tracht-Digital-Solutions/tds-blog"
+            placeholder="Tracht-Digital-Solutions/tds-blog-frontend"
           />
           <input
             value={rebuildWorkflow}
