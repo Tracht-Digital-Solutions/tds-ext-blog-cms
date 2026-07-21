@@ -1,6 +1,6 @@
 {
   "name": "@tracht-digital-solutions/tds-ext-blog-cms",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "Blog-CMS extension for the TDS panel platform: multi-blog post management (1:n blogs) via panel-contract.",
   "license": "UNLICENSED",
   "private": false,
