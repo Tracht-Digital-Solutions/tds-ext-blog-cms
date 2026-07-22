@@ -193,4 +193,65 @@ final class BlogRepository
         $stmt = $this->pdo->prepare('DELETE FROM blog_post WHERE blog_id = :b AND slug = :s AND lang = :l');
         $stmt->execute([':b' => $blogId, ':s' => $slug, ':l' => $lang]);
     }
+
+    // --- Public (unauthenticated) read surface ------------------------------
+    // Serves the PUBLISHED content the public blog/landingpage SSG builds fetch
+    // (the successor to tds-content-api's open `/content/blog*` read). Only
+    // draft=0, published_at IS NOT NULL rows leak out here.
+
+    /** The blog the public site maps to (single-blog): first by name/id. */
+    public function defaultBlog(): ?array
+    {
+        $row = $this->pdo->query(
+            'SELECT id, blog_key, name FROM blog ORDER BY name, id LIMIT 1'
+        )->fetch();
+        return $row === false ? null : $row;
+    }
+
+    /**
+     * Published posts, newest-id first, keyset-paginated by id (`cursor` = the
+     * last id of the previous page). Returns up to $limit+1 rows so the caller
+     * can compute `nextCursor`. Author columns are joined for the byline.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function publicPosts(int $blogId, ?string $lang, int $limit, ?int $cursor): array
+    {
+        $limit = max(1, min($limit, 100));
+        $sql = 'SELECT p.id, p.slug, p.lang, p.category, p.title, p.excerpt, p.tags, p.cover_hint,
+                       p.published_at, p.machine_translated, p.author_id,
+                       a.name AS author_name, a.avatar_url AS author_avatar_url, a.bio AS author_bio
+                FROM blog_post p LEFT JOIN blog_author a ON a.id = p.author_id
+                WHERE p.blog_id = :b AND p.draft = 0 AND p.published_at IS NOT NULL';
+        $params = [':b' => $blogId];
+        if ($lang !== null) {
+            $sql .= ' AND p.lang = :l';
+            $params[':l'] = $lang;
+        }
+        if ($cursor !== null) {
+            $sql .= ' AND p.id < :c';
+            $params[':c'] = $cursor;
+        }
+        // LIMIT is an inlined int (bound LIMIT params are unreliable on MySQL).
+        $sql .= ' ORDER BY p.id DESC LIMIT ' . ($limit + 1);
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /** A single PUBLISHED post by slug+lang (draft rows return null). */
+    public function publicPost(int $blogId, string $slug, string $lang): ?array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT p.id, p.slug, p.lang, p.category, p.title, p.excerpt, p.meta_description, p.tags, p.body,
+                    p.cover_hint, p.published_at, p.created_at, p.updated_at, p.machine_translated, p.author_id,
+                    a.name AS author_name, a.avatar_url AS author_avatar_url, a.bio AS author_bio
+             FROM blog_post p LEFT JOIN blog_author a ON a.id = p.author_id
+             WHERE p.blog_id = :b AND p.slug = :s AND p.lang = :l AND p.draft = 0 AND p.published_at IS NOT NULL
+             LIMIT 1'
+        );
+        $stmt->execute([':b' => $blogId, ':s' => $slug, ':l' => $lang]);
+        $row = $stmt->fetch();
+        return $row === false ? null : $row;
+    }
 }

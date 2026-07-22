@@ -82,6 +82,86 @@ final class BlogCmsModule extends AbstractModule
             });
         }
 
+        // --- Public read surface (UNAUTHENTICATED) --------------------------
+        // The successor to tds-content-api's open `/content/blog*` read that the
+        // public blog + landingpage SSG builds fetch at build time. Serves only
+        // PUBLISHED posts of the single default blog, in the camelCase BlogPost
+        // shape tds-shared defines (markdown body → the frontend renders it).
+        // These are the ONLY ungated routes in this module; keep them read-only.
+        $app->get('/content/blog', function (Request $req, Response $res) use ($c): Response {
+            // Graceful for a build-fetch: any DB hiccup returns an empty page so
+            // the public build falls back to its baked defaults, never a 500.
+            try {
+                $repo = $c->get(BlogRepository::class);
+                $blog = $repo->defaultBlog();
+                if ($blog === null) {
+                    return self::json($res, ['posts' => [], 'nextCursor' => null]);
+                }
+                $q = $req->getQueryParams();
+                $lang = self::publicLang($q['lang'] ?? null);
+                $limit = max(1, min((int) ($q['limit'] ?? 50), 100));
+                $cursor = isset($q['cursor']) && $q['cursor'] !== '' ? (int) $q['cursor'] : null;
+                $rows = $repo->publicPosts((int) $blog['id'], $lang, $limit, $cursor);
+                $nextCursor = null;
+                if (count($rows) > $limit) {
+                    $rows = array_slice($rows, 0, $limit);
+                    $nextCursor = (int) $rows[count($rows) - 1]['id'];
+                }
+                return self::json($res, [
+                    'posts' => array_map([self::class, 'publicShape'], $rows),
+                    'nextCursor' => $nextCursor,
+                ]);
+            } catch (\Throwable) {
+                return self::json($res, ['posts' => [], 'nextCursor' => null]);
+            }
+        });
+
+        // Popularity: this module has no per-post view counter, so "popular"
+        // degrades to newest-first (the frontend just needs a populated tab).
+        $app->get('/content/blog/popular', function (Request $req, Response $res) use ($c): Response {
+            try {
+                $repo = $c->get(BlogRepository::class);
+                $blog = $repo->defaultBlog();
+                if ($blog === null) {
+                    return self::json($res, ['posts' => []]);
+                }
+                $q = $req->getQueryParams();
+                $lang = self::publicLang($q['lang'] ?? null);
+                $limit = max(1, min((int) ($q['limit'] ?? 6), 100));
+                $rows = array_slice($repo->publicPosts((int) $blog['id'], $lang, $limit, null), 0, $limit);
+                return self::json($res, ['posts' => array_map([self::class, 'publicShape'], $rows)]);
+            } catch (\Throwable) {
+                return self::json($res, ['posts' => []]);
+            }
+        });
+
+        $app->get('/content/blog/{slug:[a-z0-9-]+}', function (Request $req, Response $res, array $args) use ($c): Response {
+            try {
+                $repo = $c->get(BlogRepository::class);
+                $blog = $repo->defaultBlog();
+                $lang = self::publicLang(($req->getQueryParams()['lang'] ?? null)) ?? 'de';
+                $row = $blog === null ? null : $repo->publicPost((int) $blog['id'], (string) $args['slug'], $lang);
+                if ($row === null) {
+                    return self::json($res, ['error' => 'Post not found'], 404);
+                }
+                return self::json($res, ['post' => self::publicShape($row)]);
+            } catch (\Throwable) {
+                return self::json($res, ['error' => 'Post not found'], 404);
+            }
+        });
+
+        // Curated topics + custom snippets were tds-content-api features with no
+        // equivalent in this module — answer with the "nothing maintained" shape
+        // the frontends already treat as a fallback (null topics / empty snippets)
+        // so their build stays green.
+        $app->get('/content/topics', function (Request $req, Response $res): Response {
+            $lang = self::publicLang($req->getQueryParams()['lang'] ?? null) ?? 'de';
+            return self::json($res, ['lang' => $lang, 'topics' => null]);
+        });
+        $app->get('/content/snippets', function (Request $req, Response $res): Response {
+            return self::json($res, ['snippets' => []]);
+        });
+
         $app->get('/blog/summary', function (Request $req, Response $res) use ($c): Response {
             if (($deny = self::require($c->get(UserContext::class), 'blog:read', $res)) !== null) {
                 return $deny;
@@ -358,6 +438,68 @@ final class BlogCmsModule extends AbstractModule
     {
         $v = is_string($value) ? strtolower($value) : '';
         return in_array($v, self::LANGS, true) ? $v : 'de';
+    }
+
+    /** Nullable lang for the public read routes (absent/invalid → null = both langs). */
+    private static function publicLang(mixed $value): ?string
+    {
+        $v = is_string($value) ? strtolower($value) : '';
+        return in_array($v, self::LANGS, true) ? $v : null;
+    }
+
+    /**
+     * Map a DB row to the camelCase `BlogPost` shape tds-shared defines (the
+     * contract the public blog/landingpage consume). `body` (+ created/updated)
+     * is present only on the single-post read. Fields this module has no column
+     * for (viewCount, adsMode, block bodyFormat) are omitted — all optional in
+     * `BlogPost`, so the frontend applies its defaults (view 0, ads "default",
+     * markdown body).
+     *
+     * @param array<string,mixed> $r
+     * @return array<string,mixed>
+     */
+    private static function publicShape(array $r): array
+    {
+        $author = ($r['author_id'] ?? null) !== null ? [
+            'id' => (int) $r['author_id'],
+            'name' => (string) ($r['author_name'] ?? ''),
+            'slug' => self::slugify((string) ($r['author_name'] ?? '')),
+            'avatarUrl' => ($r['author_avatar_url'] ?? null) !== null ? (string) $r['author_avatar_url'] : null,
+            'bio' => ($r['author_bio'] ?? null) !== null ? (string) $r['author_bio'] : null,
+        ] : null;
+
+        $out = [
+            'id' => (int) $r['id'],
+            'slug' => (string) $r['slug'],
+            'lang' => (string) $r['lang'],
+            'category' => (string) ($r['category'] ?? ''),
+            'title' => (string) $r['title'],
+            'excerpt' => (string) ($r['excerpt'] ?? ''),
+            'tags' => ($r['tags'] ?? null) !== null ? (string) $r['tags'] : '',
+            'coverHint' => ($r['cover_hint'] ?? null) !== null ? (string) $r['cover_hint'] : null,
+            'publishedAt' => ($r['published_at'] ?? null) !== null ? (string) $r['published_at'] : null,
+            'draft' => false,
+            'machineTranslated' => (bool) ($r['machine_translated'] ?? false),
+            'authorId' => ($r['author_id'] ?? null) !== null ? (int) $r['author_id'] : null,
+            'author' => $author,
+        ];
+        // Full-post read carries the body + timestamps + SEO meta.
+        if (array_key_exists('body', $r)) {
+            $out['body'] = (string) $r['body'];
+            $out['bodyFormat'] = 'markdown';
+            $out['metaDescription'] = ($r['meta_description'] ?? null) !== null ? (string) $r['meta_description'] : null;
+            $out['createdAt'] = (string) ($r['created_at'] ?? $r['published_at'] ?? '');
+            $out['updatedAt'] = (string) ($r['updated_at'] ?? $r['published_at'] ?? '');
+        }
+        return $out;
+    }
+
+    /** Best-effort URL slug from an author name (this module stores no slug column). */
+    private static function slugify(string $name): string
+    {
+        $s = strtolower(trim($name));
+        $s = preg_replace('/[^a-z0-9]+/', '-', $s) ?? '';
+        return trim($s, '-');
     }
 
     private static function optional(mixed $value, int $limit): ?string

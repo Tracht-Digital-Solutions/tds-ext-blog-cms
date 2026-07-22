@@ -19,6 +19,16 @@ Blog-CMS extension, ported from `tds-content-api`'s blog-post model. Read
 
 ## Gotchas
 
+- **Public read surface (UNAUTHENTICATED).** Alongside the admin (`blog:read`/
+  `blog:write`) routes, this module serves the successor to tds-content-api's open
+  public read that the public blog + landingpage SSG builds fetch: `GET
+  /content/blog` (published list, `lang`/`limit`/`cursor`), `/content/blog/popular`
+  (newest — no view counter), `/content/blog/{slug}`, `/content/topics` (null) and
+  `/content/snippets` (`[]`). Only `draft=0, published_at IS NOT NULL` rows leak;
+  the response is the camelCase `BlogPost` shape tds-shared defines (markdown body →
+  the frontend renders it). Maps the single public site to the **default blog**
+  (`defaultBlog()`). These routes **degrade to an empty payload on any DB error**
+  (build-fetch fail-safe) — keep them read-only and ungated.
 - Migration class names are **module-prefixed** (`BlogCms*`) AND the numeric
   **version prefixes are globally unique** (this module owns the `20260728*`
   band) — every composed module's migrations share one `phinxlog`, so a reused
