@@ -16,9 +16,16 @@ scoped to a blog.
   (upsert `{title, body, excerpt?, category?, draft?, lang?}`), `DELETE …`.
 - **Frontend:** nav "Blog-CMS" → `/blog`, the blogs list + add-blog form + a
   blog's post list, the posts dashboard widget, DE/EN i18n.
+- **Public read (UNAUTHENTICATED)** — the successor to tds-content-api's open read
+  the public blog/landingpage SSG builds fetch: `GET /content/blog?lang=&limit=&cursor=`
+  (published list, `{posts, nextCursor}`), `GET /content/blog/popular`, `GET
+  /content/blog/{slug}?lang=`, `GET /content/topics` (null), `GET /content/snippets`
+  (`[]`). Published posts only (`draft=0`, `published_at NOT NULL`), camelCase `BlogPost`
+  shape, single public site → the default blog. Degrades to an empty payload on a DB
+  error (build-fetch fail-safe).
 
-Auth: `blog:read`/`blog:write` from the core `UserContext` (admins bypass); data
-via the core `PDO`.
+Auth: the admin routes need `blog:read`/`blog:write` from the core `UserContext` (admins
+bypass); the `/content/*` public read is ungated. Data via the core `PDO`.
 
 ## Still to port (later checkpoints)
 
