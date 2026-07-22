@@ -11,10 +11,10 @@ use Tds\Ext\BlogCms\Domain\BlogRepository;
 use Tds\Ext\BlogCms\Service\DeeplTranslator;
 use Tds\Ext\BlogCms\Service\RebuildTrigger;
 use Tds\Ext\BlogCms\Service\TranslationSync;
-use Tds\Panel\Contract\AbstractModule;
-use Tds\Panel\Contract\PermissionDef;
-use Tds\Panel\Contract\SettingsStore;
-use Tds\Panel\Contract\UserContext;
+use Tds\Frontend\Contract\AbstractModule;
+use Tds\Frontend\Contract\PermissionDef;
+use Tds\Frontend\Contract\SettingsStore;
+use Tds\Frontend\Contract\UserContext;
 
 /**
  * Backend Module for the Blog-CMS (checkpoint-1: blog registry + per-(blog, slug,

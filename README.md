@@ -1,10 +1,10 @@
 # tds-ext-blog-cms-pkg
 
-The **Blog-CMS** as a panel extension, ported from `tds-content-api`'s blog-post
+The **Blog-CMS** as a frontend extension, ported from `tds-content-api`'s blog-post
 model. Edits blog posts (title / excerpt / body / draft / publish per **blog ×
 slug × language**); the static blogs fetch published posts at build time.
 
-**1:n blogs:** a `blog` registry lets one panel manage several blogs; posts are
+**1:n blogs:** a `blog` registry lets one frontend manage several blogs; posts are
 scoped to a blog.
 
 ## Surface (checkpoint-1)
@@ -29,13 +29,13 @@ authors, and DeepL auto-translation (as content-api's TranslationSync does).
 ## Develop
 
 ```bash
-npm install        # pulls tds-panel-contract from GitHub Packages (needs NPM_TOKEN)
+npm install        # pulls tds-frontend-contract from GitHub Packages (needs NPM_TOKEN)
 npm run build && npm run type-check
-composer install   # resolves tds-panel-contract from its public VCS repo
+composer install   # resolves tds-frontend-contract from its public VCS repo
 composer test      # phpunit — route/RBAC coverage; DB-backed tests skip without TDS_TEST_DB_DSN
 ```
 
 ## Enable it
 
-Host `astro.config.mjs`: add the manifest to `panelHost({ extensions: [...] })`.
+Host `astro.config.mjs`: add the manifest to `frontendHost({ extensions: [...] })`.
 Base API: add `new BlogCmsModule()` to `Modules::enabled()`.

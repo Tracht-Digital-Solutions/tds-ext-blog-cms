@@ -8,7 +8,7 @@ use PHPUnit\Framework\TestCase;
 use Slim\Factory\AppFactory;
 use Slim\Psr7\Factory\ServerRequestFactory;
 use Tds\Ext\BlogCms\BlogCmsModule;
-use Tds\Panel\Contract\UserContext;
+use Tds\Frontend\Contract\UserContext;
 
 /** Configurable UserContext double. */
 final class FakeUser implements UserContext

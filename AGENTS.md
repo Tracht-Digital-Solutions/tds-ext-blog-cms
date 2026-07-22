@@ -1,7 +1,7 @@
 # AGENTS.md — tds-ext-blog-cms-pkg
 
 Blog-CMS extension, ported from `tds-content-api`'s blog-post model. Read
-`tds-panel-contract-pkg` + `tds-core-panel-api` AGENTS first.
+`tds-frontend-contract-pkg` + `tds-core-frontend-api` AGENTS first.
 
 ## Model
 
@@ -54,7 +54,7 @@ Blog-CMS extension, ported from `tds-content-api`'s blog-post model. Read
   pre-existing posts. UI: an "Auto-Übersetzung" badge on machine rows + a backfill button.
   Writes go through the repo (never the route) so the sync can't ping-pong; drafts skip.
 - **CP5:** **author bylines**. A self-contained `blog_author` registry (name/bio/
-  avatar_url), independent of panel users, with a nullable `blog_post.author_id` FK
+  avatar_url), independent of frontend users, with a nullable `blog_post.author_id` FK
   (`ON DELETE SET NULL` — removing an author detaches its posts, never cascades).
   Routes: `GET`/`POST /blog/authors` + `DELETE /blog/authors/{id}` (read/write RBAC).
   The post upsert takes an optional `author_id` (an unknown id is dropped, not
@@ -86,14 +86,14 @@ Blog-CMS extension, ported from `tds-content-api`'s blog-post model. Read
   API `/admin/settings/blog-cms` (masked: `configured`+`last4`; blank secret = keep).
   Env vars (`BLOG_DEEPL_API_KEY`/`DEEPL_API_KEY`, `BLOG_AUTO_TRANSLATE`,
   `BLOG_REBUILD_TOKEN`) remain the fallback, so existing deployments keep working.
-- **CP9:** **authors tied to panel users.** `blog_author.user_id` (nullable,
+- **CP9:** **authors tied to frontend users.** `blog_author.user_id` (nullable,
   unsigned, unique — NOT a DB FK; app_user lives in another service, same rule as
   the ticket refs) links a byline to a tds-auth-api user; the row stays a SNAPSHOT
   (name/bio/avatar) so the byline survives a user removal. `POST /blog/authors` now
   takes an optional `user_id` → `upsertAuthorFromUser` (one snapshot per user);
   absent ⇒ a free-form/guest author. The AuthorManager fetches `/auth/admin/users`
   (relative, same-origin gateway convention), filters to blog authors
-  (`isBlogAuthor || isAdmin`), and imports them as authors (a "Panel-Nutzer" chip
+  (`isBlogAuthor || isAdmin`), and imports them as authors (a "Frontend-Nutzer" chip
   marks linked ones); free-form add stays for guests. Falls back gracefully when
   `/auth/admin/users` is unreachable.
 - **TODO (next):** the website-cms equivalent has no author concept (blocks, not
