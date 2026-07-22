@@ -19,7 +19,10 @@ Blog-CMS extension, ported from `tds-content-api`'s blog-post model. Read
 
 ## Gotchas
 
-- Migration class names are **module-prefixed** (`BlogCms*`).
+- Migration class names are **module-prefixed** (`BlogCms*`) AND the numeric
+  **version prefixes are globally unique** (this module owns the `20260728*`
+  band) — every composed module's migrations share one `phinxlog`, so a reused
+  class name OR version collides. Keep new migrations in this band.
 - Routes are closures resolving `UserContext`/`BlogRepository` from the container
   at request time (rebound per request by the core AuthMiddleware).
 - DB-backed tests skip without `TDS_TEST_DB_DSN`; the committed test covers
